@@ -1,7 +1,7 @@
 
 # 1.1
 Изучим индексы:  
-1) B-tree в Postgresql основано на структуре данных B-дерево - сбалансированное сильноветвящееся дерево поиска. Работает лучше всего с простыми типами данных.  
+1) B-tree в PostgreSQL основано на структуре данных B-дерево - сбалансированное сильноветвящееся дерево поиска. Работает лучше всего с простыми типами данных.  
 2) GIN (Generalized Inverted Index) – обобщённый инвертированный индекс. Применяется к составным типам, работа с которыми осуществляется с помощью ключей: массивы и tsvector. Предназначен для случаев, когда индексируемые значения являются составными, а запросы ищут значения элементов в этих составных объектах.
 3) BRIN (block range index) – блоковый индекс. Идея состоит в том, чтобы разбить данные на блоки и при поиске элемента пропускать блоки, в которых точно нету искомого, по средством хранения метаданных о блоке, таких как, например, минимальное и максимальное значение. Данный индекс лучше работает с данными, в которых порядок значений столбца коррелируется с порядком их расположения в физической памяти.  
 Сравним производительность до и после добавления индексов:  
@@ -287,108 +287,69 @@ SELECT * FROM resumes WHERE resume LIKE '%machine learning%';
 
 ---
 
+### Вывод:  
+pg_trgm:
+- Для европейских языков с длинными словами.
+- Поиск подстрок.
+pg_bigm:
+- Для азиатских языков или коротких терминов.
+- Частые запросы с LIKE 'prefix%' или LIKE '%suffix'.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+## pgcrypto
+Зашифруем:  
 ```sql
-CREATE INDEX resume_trgm_idx ON resumes USING gin (resume gin_trgm_ops);
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+ALTER TABLE resumes
+    ALTER COLUMN resume TYPE bytea USING convert_to(resume, 'UTF8');
+
+INSERT INTO resumes (category, resume)
+VALUES (
+    'some_category',
+    pgp_sym_encrypt('Ivanov Ivan, Fullstack developer, phone: 123-456', 'my_secret_key')
+);
 ```
+Попробуем получить доступ к данным:
 ```sql
-CREATE INDEX resume_bigm_idx ON resumes USING gin (resume gin_bigm_ops);
+SELECT id, category,
+       resume AS resume_text
+FROM resumes
+WHERE category = 'some_category';
 ```
-
-
-
-
-
+Результат:  
 ```
-CREATE INDEX resume_trgm_idx ON resumes USING gin (resume gin_trgm_ops);
-big_db=# EXPLAIN ANALYZE SELECT * FROM resumes WHERE resume ILIKE '%python developer%';
-big_db=#
-                                                            QUERY PLAN              
------------------------------------------------------------------------------------------------------------------------------------
- Bitmap Heap Scan on resumes  (cost=916.22..18811.15 rows=6222 width=846) (actual time=58.702..2602.698 rows=20018 loops=1)
-   Recheck Cond: (resume ~~* '%python developer%'::text)
-   Rows Removed by Index Recheck: 45997
-   Heap Blocks: exact=38774
-   ->  Bitmap Index Scan on idx_resume_trgm  (cost=0.00..914.67 rows=6222 width=0) (actual time=52.807..52.807 rows=66015 loops=1)
-         Index Cond: (resume ~~* '%python developer%'::text)
- Planning Time: 0.449 ms
- Execution Time: 2603.942 ms
-(8 rows)
+ id |   category    |                                                                                                              resume_text                              
+----+---------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  5000003 | some_category | \xc30d040703024dad3621eba7328b64d26101a1bfa47aa09c1380f8a38416f31b3759b0564303e396e7db7e42fcc0f722dcba3c3c1792a0c908e3c27718f6b8d082bf2fce1ab13df039ad1cd52be9fa72d44e7d7ec820cfffa3122f624caacf1fbf6627204995103f091bb1b0b0f910b44c6a
+(1 row)
 
 (END)
 ```
+Используем ключ для расшифровки:
+```sql
+SELECT id, category,
+       pgp_sym_decrypt(resume, 'my_secret_key') AS resume_text
+FROM resumes
+WHERE category = 'some_category';
 ```
-big_db=# CREATE INDEX idx_resume_bigram ON resumes USING GIN (resume gin_bigm_ops);
-CREATE INDEX
-big_db=# EXPLAIN ANALYZE SELECT * FROM resumes WHERE resume ILIKE '%python developer%';
-                                                            QUERY PLAN              
------------------------------------------------------------------------------------------------------------------------------------
- Bitmap Heap Scan on resumes  (cost=916.22..18811.15 rows=6222 width=846) (actual time=54.961..2480.944 rows=20018 loops=1)
-   Recheck Cond: (resume ~~* '%python developer%'::text)
-   Rows Removed by Index Recheck: 45997
-   Heap Blocks: exact=38774
-   ->  Bitmap Index Scan on idx_resume_trgm  (cost=0.00..914.67 rows=6222 width=0) (actual time=49.674..49.675 rows=66015 loops=1)
-         Index Cond: (resume ~~* '%python developer%'::text)
- Planning Time: 2.160 ms
- Execution Time: 2482.199 ms
-(8 rows)
-
-(END)
+Результат:
 ```
-
-
-
+ id |   category    |                   resume_text
+----+---------------+--------------------------------------------------
+  5000003 | some_category | Ivanov Ivan, Fullstack developer, phone: 123-456
+(1 row)
 ```
-big_db=# CREATE INDEX resume_trgm_idx ON resumes USING gin (resume gin_trgm_ops);
+**Преимущества** :
+- Данные защищены на уровне БД
+- Поддержка AES-256 и других алгоритмов
+- Возможность разделения прав доступа
 
-CREATE INDEX
-Time: 278769.498 ms (04:38.769)
-big_db=#
-big_db=# EXPLAIN ANALYZE SELECT * FROM resumes WHERE resume ILIKE '%Skills';
-Time: 22504.638 ms (00:22.505)
-                                                              QUERY PLAN            
---------------------------------------------------------------------------------------------------------------------------------------
- Bitmap Heap Scan on resumes  (cost=442.20..24307.64 rows=9058 width=846) (actual time=184.971..19768.499 rows=61434 loops=1)
-   Recheck Cond: (resume ~~* 'Skills%'::text)
-   Rows Removed by Index Recheck: 250620
-   Heap Blocks: exact=55567
-   ->  Bitmap Index Scan on resume_trgm_idx  (cost=0.00..439.93 rows=9058 width=0) (actual time=174.507..174.508 rows=312054 loops=1)
-         Index Cond: (resume ~~* 'Skills%'::text)
- Planning Time: 3.767 ms
- Execution Time: 19780.252 ms
-(8 rows)
+**Риски** :
+- Нет индексирования зашифрованных полей
+- Добавляет нагрузку на CPU
 
-(END)
-```
+### Вывод
+`pgcrypto` обеспечивает:
+   - Шифрование "из коробки"
+   - Совместимость со стандартами
+   - Требует аккуратного управления ключами
