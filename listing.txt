@@ -1,0 +1,76 @@
+big_db=# DROP INDEX IF EXISTS idx_resume_trgm;
+DEX IF EXISTS idx_resume_bigram;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS pg_bigm;
+CREATE INDEX idx_resume_trgm ON resumes USING gin (resume gin_trgm_ops);
+CREATE INDEX idx_resume_bigram ON resumes USING gin (resume gin_bigm_ops);
+SET enable_seqscan = OFF;
+DROP INDEX IF EXISTS idx_resume_bigram;
+EXPLAIN ANALYZE
+SELECT * FROM resumes WHERE resume LIKE '%machine learning%';
+CREATE INDEX idx_resume_bigram ON resumes USING gin (resume gin_bigm_ops);
+DROP INDEX IF EXISTS idx_resume_trgm;
+EXPLAIN ANALYZE
+SELECT * FROM resumes WHERE resume LIKE '%machine learning%';
+DROP INDEX
+Time: 45.274 ms
+big_db=# DROP INDEX IF EXISTS idx_resume_bigram;
+DROP INDEX
+Time: 15.218 ms
+big_db=# CREATE EXTENSION IF NOT EXISTS pg_trgm;
+NOTICE:  extension "pg_trgm" already exists, skipping
+CREATE EXTENSION
+Time: 2.228 ms
+big_db=# CREATE EXTENSION IF NOT EXISTS pg_bigm;
+NOTICE:  extension "pg_bigm" already exists, skipping
+CREATE EXTENSION
+Time: 0.762 ms
+big_db=# CREATE INDEX idx_resume_trgm ON resumes USING gin (resume gin_trgm_ops);
+CREATE INDEX
+Time: 296545.892 ms (04:56.546)
+big_db=# CREATE INDEX idx_resume_bigram ON resumes USING gin (resume gin_bigm_ops);
+CREATE INDEX
+Time: 202877.904 ms (03:22.878)
+big_db=# SET enable_seqscan = OFF;
+SET
+Time: 0.670 ms
+big_db=# DROP INDEX IF EXISTS idx_resume_bigram;
+DROP INDEX
+Time: 74.977 ms
+big_db=# EXPLAIN ANALYZE
+big_db-# SELECT * FROM resumes WHERE resume LIKE '%machine learning%';
+                                                            QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on resumes  (cost=881.35..6798.35 rows=1722 width=846) (actual time=67.198..694.444 rows=9815 loops=1)
+   Recheck Cond: (resume ~~ '%machine learning%'::text)
+   Rows Removed by Index Recheck: 22530
+   Heap Blocks: exact=24670
+   ->  Bitmap Index Scan on idx_resume_trgm  (cost=0.00..880.92 rows=1722 width=0) (actual time=63.285..63.286 rows=32345 loops=1)
+         Index Cond: (resume ~~ '%machine learning%'::text)
+ Planning Time: 4.301 ms
+ Execution Time: 695.238 ms
+(8 rows)
+
+Time: 700.709 ms
+big_db=# CREATE INDEX idx_resume_bigram ON resumes USING gin (resume gin_bigm_ops);
+CREATE INDEX
+Time: 210034.017 ms (03:30.034)
+big_db=# DROP INDEX IF EXISTS idx_resume_trgm;
+DROP INDEX
+Time: 221.674 ms
+big_db=# EXPLAIN ANALYZE
+big_db-# SELECT * FROM resumes WHERE resume LIKE '%machine learning%';
+                                                               QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on resumes  (cost=1037.35..6954.35 rows=1722 width=846) (actual time=175.577..5777.736 rows=9815 loops=1)
+   Recheck Cond: (resume ~~ '%machine learning%'::text)
+   Rows Removed by Index Recheck: 240583
+   Heap Blocks: exact=55235
+   ->  Bitmap Index Scan on idx_resume_bigram  (cost=0.00..1036.92 rows=1722 width=0) (actual time=160.384..160.384 rows=250398 loops=1)
+         Index Cond: (resume ~~ '%machine learning%'::text)
+ Planning Time: 0.636 ms
+ Execution Time: 5779.180 ms
+(8 rows)
+
+Time: 5781.049 ms (00:05.781)
+big_db=#
