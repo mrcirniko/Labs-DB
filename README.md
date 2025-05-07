@@ -221,12 +221,105 @@ BEGIN ISOLATION LEVEL REPEATABLE READ;
 ```
 
 # 1.3
-
 ```sql
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE EXTENSION IF NOT EXISTS pg_bigm;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 ```
+```sql
+DROP INDEX IF EXISTS idx_resume_trgm;
+DROP INDEX IF EXISTS idx_resume_bigram;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS pg_bigm;
+CREATE INDEX idx_resume_trgm ON resumes USING gin (resume gin_trgm_ops);
+CREATE INDEX idx_resume_bigram ON resumes USING gin (resume gin_bigm_ops);
+SET enable_seqscan = OFF;
+DROP INDEX IF EXISTS idx_resume_bigram;
+EXPLAIN ANALYZE
+SELECT * FROM resumes WHERE resume LIKE '%machine learning%';
+CREATE INDEX idx_resume_bigram ON resumes USING gin (resume gin_bigm_ops);
+DROP INDEX IF EXISTS idx_resume_trgm;
+EXPLAIN ANALYZE
+SELECT * FROM resumes WHERE resume LIKE '%machine learning%';
+```
+## Сравнение индексов `pg_trgm` и `pg_bigm` в PostgreSQL
+
+Запрос:  
+```sql
+SELECT * FROM resumes WHERE resume LIKE '%machine learning%';
+```
+
+Результаты выполнения (`EXPLAIN ANALYZE`):  
+
+| Параметр                      | `pg_trgm`                                       | `pg_bigm`                                       |
+|------------------------------|--------------------------------------------------|--------------------------------------------------|
+| Bitmap Index Scan            | `idx_resume_trgm`                               | `idx_resume_bigram`                             |
+| Index Cond                   | `(resume ~~ '%machine learning%'::text)`        | `(resume ~~ '%machine learning%'::text)`        |
+| Rows matched (до Recheck)    | 32345                                           | 250398                                           |
+| Rows Removed by Recheck      | 22530                                           | 240583                                           |
+| Rows (после Recheck)         | 9815                                            | 9815                                             |
+| Heap Blocks (exact)          | 24670                                           | 55235                                            |
+| Planning Time                | 4.301 ms                                        | 0.636 ms                                         |
+| Bitmap Index Scan Time       | 63.285..63.286 ms                               | 160.384..160.384 ms                              |
+| Execution Time               | 695.238 ms                                      | 5779.180 ms                                      |
+| Index Creation Time          | 296545.892 ms (04:56.546)                       | 210034.017 ms (03:30.034)                        |
+
+---
+Обе расширения позволяют ускорить поиск по подстроке, но:
+
+Преимущества `pg_trgm`:
+- Более точный индекс: меньше ложных срабатываний.
+- Существенно быстрее при выполнении запроса.
+- Меньше чтений с диска (`Heap Blocks`).
+- Лучше подходит для длинных текстов и произвольных подстрок.
+
+Недостатки `pg_trgm`:
+- Более долгое время создания индекса (почти 5 минут).
+
+---
+
+Преимущества `pg_bigm`:
+- Быстрее создается индекс (на 1.5 минуты быстрее, чем `pg_trgm`).
+- Возможен выигрыш при коротких строках и коротких подстроках.
+
+Недостатки `pg_bigm`:
+- Сильно перегружает фильтрацию (`Rows Removed by Recheck`: 240k).
+- В 8 раз медленнее выполнения.
+- Использует в 2 раза больше блоков памяти.
+
+---
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ```sql
 CREATE INDEX resume_trgm_idx ON resumes USING gin (resume gin_trgm_ops);
 ```
@@ -270,6 +363,31 @@ big_db=# EXPLAIN ANALYZE SELECT * FROM resumes WHERE resume ILIKE '%python devel
          Index Cond: (resume ~~* '%python developer%'::text)
  Planning Time: 2.160 ms
  Execution Time: 2482.199 ms
+(8 rows)
+
+(END)
+```
+
+
+
+```
+big_db=# CREATE INDEX resume_trgm_idx ON resumes USING gin (resume gin_trgm_ops);
+
+CREATE INDEX
+Time: 278769.498 ms (04:38.769)
+big_db=#
+big_db=# EXPLAIN ANALYZE SELECT * FROM resumes WHERE resume ILIKE '%Skills';
+Time: 22504.638 ms (00:22.505)
+                                                              QUERY PLAN            
+--------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on resumes  (cost=442.20..24307.64 rows=9058 width=846) (actual time=184.971..19768.499 rows=61434 loops=1)
+   Recheck Cond: (resume ~~* 'Skills%'::text)
+   Rows Removed by Index Recheck: 250620
+   Heap Blocks: exact=55567
+   ->  Bitmap Index Scan on resume_trgm_idx  (cost=0.00..439.93 rows=9058 width=0) (actual time=174.507..174.508 rows=312054 loops=1)
+         Index Cond: (resume ~~* 'Skills%'::text)
+ Planning Time: 3.767 ms
+ Execution Time: 19780.252 ms
 (8 rows)
 
 (END)
