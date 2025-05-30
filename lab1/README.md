@@ -1,6 +1,6 @@
 ```sudo docker-compose down -v --remove-orphans```  
 ```sudo docker-compose up --build```  
-
+```sudo docker exec -it big-db psql -U me -d big_db```  
 
 # 1.1
 Изучим индексы:  
