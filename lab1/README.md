@@ -1,3 +1,6 @@
+```sudo docker-compose down -v --remove-orphans```  
+```sudo docker-compose up --build```  
+
 
 # 1.1
 Изучим индексы:  
