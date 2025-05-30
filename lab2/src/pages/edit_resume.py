@@ -49,7 +49,8 @@ def listen_for_likes(candidate_id):
 
     for message in pubsub.listen():
         if message['type'] == 'message':
-            data = message['data'].decode('utf-8')
+            #data = message['data'].decode('utf-8')
+            data = message['data']
             parts = data.split(':')
             if len(parts) == 3 and parts[0] == 'liked':
                 liked_candidate_id = parts[1]

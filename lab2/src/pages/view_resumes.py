@@ -11,7 +11,8 @@ from services.cache_service import (
     start_cache_invalidation_listener
 )
 
-import json
+from streamlit_autorefresh import st_autorefresh
+st_autorefresh(interval=500, key="datarefresh")
 
 # Запуск слушателя pub/sub
 start_cache_invalidation_listener()
