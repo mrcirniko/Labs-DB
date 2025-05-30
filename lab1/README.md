@@ -1,8 +1,8 @@
 ```sudo docker-compose down -v --remove-orphans```  
 ```sudo docker-compose up --build```  
 ```sudo docker exec -it big-db psql -U me -d big_db```  
-``` sudo lsof -i :5432```
-```sudo service postgresql stop```
+```sudo lsof -i :5432```  
+```sudo service postgresql stop```  
 
 # 1.1
 Изучим индексы:  
